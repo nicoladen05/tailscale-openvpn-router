@@ -26,18 +26,52 @@ Only IPv4 routes are supported for now.
 
 ## Setup
 
-1. Put your OpenVPN client config in `config/` (e.g. `config/client.ovpn`).
-2. Copy `.env.example` to `.env` and fill it in.
-3. Start the container:
+A prebuilt image is published to the GitHub Container Registry as
+`ghcr.io/nicoladen05/tailscale-openvpn-router`. `latest` follows the `main` branch;
+each commit is also tagged with its full commit hash, for pinning a specific version.
 
-   ```sh
-   docker compose up -d --build
+1. Create a directory for the router and save this as `compose.yml` in it:
+
+   ```yaml
+   services:
+     tailscale-openvpn-router:
+       image: ghcr.io/nicoladen05/tailscale-openvpn-router:latest
+       container_name: tailscale-openvpn-router
+       restart: unless-stopped
+       env_file: .env
+       cap_add:
+         - NET_ADMIN
+         - NET_RAW
+       devices:
+         - /dev/net/tun:/dev/net/tun
+       sysctls:
+         net.ipv4.ip_forward: 1
+         net.ipv6.conf.all.forwarding: 1
+       volumes:
+         - ./state:/var/lib/tailscale
+         - ./config:/config:ro
    ```
 
-4. In the Tailscale admin console, approve the advertised subnet routes for the new node.
-5. On clients, accept the routes (e.g. `tailscale set --accept-routes` on Linux).
+2. Put your OpenVPN client config in `config/` (e.g. `config/client.ovpn`).
+3. Create a `.env` file next to `compose.yml` and fill it in. See
+   [`.env.example`](.env.example) and [Configuration](#configuration).
+4. Start the container:
+
+   ```sh
+   docker compose up -d
+   ```
+
+5. In the Tailscale admin console, approve the advertised subnet routes for the new node.
+6. On clients, accept the routes (e.g. `tailscale set --accept-routes` on Linux).
 
 The Tailscale node state is stored in `./state`, so the node keeps its identity across restarts.
+
+To update to the latest image, run `docker compose pull && docker compose up -d`.
+
+### Building the image yourself
+
+To build from source instead, clone this repository and replace the `image:` line in
+`compose.yml` with `build: .`, then start it with `docker compose up -d --build`.
 
 ## Configuration
 
