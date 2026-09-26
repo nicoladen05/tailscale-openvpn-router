@@ -1,6 +1,6 @@
 services:
   tailscale-openvpn-router:
-    build: .
+    image: ghcr.io/nicoladen05/tailscale-openvpn-router:latest
     container_name: tailscale-openvpn-router
     restart: unless-stopped
     env_file: .env
