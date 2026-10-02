@@ -24,6 +24,30 @@ tells the tailnet. You don't have to do anything for this; it happens automatica
 
 Only IPv4 routes are supported for now.
 
+### Exit node
+
+With `EXIT_NODE=true`, the container is also a Tailscale exit node. Devices that use it
+as their exit node send all of their internet traffic through the VPN:
+
+```
+your devices ──Tailscale──▶ this container ──OpenVPN──▶ internet
+```
+
+- **Only exit node traffic goes through the VPN.** The container's own traffic, including
+  Tailscale's own connections, still uses the regular gateway.
+- **No leaks when the VPN is down.** While the tunnel is down, exit node traffic is
+  refused instead of being sent through the regular gateway.
+- **DNS goes through the VPN.** Exit node clients send their DNS queries to the
+  container, which forwards them to the DNS servers the VPN pushes (`dhcp-option DNS`).
+  If the VPN pushes no DNS servers, the container logs a warning and DNS queries use
+  Docker's DNS, outside the VPN.
+- **IPv4 only.** IPv6 traffic through the exit node is refused, so clients fall back to
+  IPv4.
+
+In this mode, the container runs `tailscale up` with `--accept-dns=false`, so that
+Tailscale doesn't replace the VPN's DNS servers. It also pins the OpenVPN server
+hostnames in `/etc/hosts`, so OpenVPN can reconnect without the VPN's DNS servers.
+
 ## Setup
 
 A prebuilt image is published to the GitHub Container Registry as
@@ -62,7 +86,9 @@ each commit is also tagged with its full commit hash, for pinning a specific ver
    ```
 
 5. In the Tailscale admin console, approve the advertised subnet routes for the new node.
-6. On clients, accept the routes (e.g. `tailscale set --accept-routes` on Linux).
+   With `EXIT_NODE=true`, also enable "Use as exit node".
+6. On clients, accept the routes (e.g. `tailscale set --accept-routes` on Linux). To use
+   the exit node, select it on the client (e.g. `tailscale set --exit-node=openvpn-router`).
 
 The Tailscale node state is stored in `./state`, so the node keeps its identity across restarts.
 
@@ -78,7 +104,8 @@ To build from source instead, clone this repository and replace the `image:` lin
 | Variable          | Required | Description                                                                                  |
 | ----------------- | -------- | -------------------------------------------------------------------------------------------- |
 | `TS_AUTH_KEY`     | yes      | Tailscale auth key.                                                                          |
-| `VPN_ROUTES`      | yes      | Comma-separated IPv4 CIDRs to route through the VPN and advertise, e.g. `10.0.0.0/8,192.168.1.10/32`. |
+| `VPN_ROUTES`      | yes      | Comma-separated IPv4 CIDRs to route through the VPN and advertise, e.g. `10.0.0.0/8,192.168.1.10/32`. Optional when `EXIT_NODE=true`. |
+| `EXIT_NODE`       | no       | `true` to also act as an exit node that sends all traffic through the VPN. See [Exit node](#exit-node). Default: `false`. |
 | `TS_HOSTNAME`     | no       | Node name on the tailnet. Default: `openvpn-router`.                                         |
 | `TS_EXTRA_ARGS`   | no       | Extra flags for `tailscale up`, e.g. `--accept-dns=false`.                                   |
 | `OVPN_USER`       | no       | OpenVPN username. Only used when set.                                                        |
@@ -87,7 +114,8 @@ To build from source instead, clone this repository and replace the `image:` lin
 | `OVPN_SERVER_IPS` | no       | OpenVPN server addresses, e.g. `10.0.0.1,10.0.0.2`. Default: resolved from the `remote` lines of the config.           |
 
 `up`/`down` scripts in the OpenVPN config and pushed `redirect-gateway`
-options are ignored, so only the traffic for `VPN_ROUTES` goes through the VPN.
+options are ignored, so only the traffic for `VPN_ROUTES` (and exit node traffic, if
+enabled) goes through the VPN.
 
 ## Troubleshooting
 
@@ -103,5 +131,3 @@ If a server hostname cannot be resolved at startup, the container exits. Set
 ## Future features
 
 - **IPv6 support:** route and advertise IPv6 networks in `VPN_ROUTES`, not only IPv4.
-- **Exit node support:** let the container act as a Tailscale exit node, so devices can
-  send all of internet traffic through the VPN.
